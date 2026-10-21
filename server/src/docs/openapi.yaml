@@ -1,0 +1,812 @@
+openapi: 3.0.3
+info:
+  title: CampusFix API
+  version: 1.0.0
+  description: |
+    REST API for **CampusFix**, a university maintenance and service request management system.
+
+    **Authentication:** call `POST /auth/login`, copy the `accessToken` from the response, click
+    **Authorize** and paste it. Access tokens last 15 minutes; the refresh token is kept in an
+    httpOnly cookie and exchanged at `POST /auth/refresh`.
+
+    **Roles:** `STUDENT`, `STAFF` (requesters), `OFFICER` (maintenance officer), `ADMIN`.
+
+    **Demo accounts** (password `CampusFix@2026`): `admin@campusfix.app`, `ibrahim.musa@campusfix.app`
+    (officer), `student@campusfix.app`, `staff@campusfix.app`.
+
+    All errors use the shape `{ "error": { "message": "...", "details": [...] } }`.
+servers:
+  - url: /api
+    description: This server
+tags:
+  - name: Auth
+    description: Registration, login, session refresh and profile
+  - name: Requests
+    description: Service request CRUD, workflow, assignment, comments and images
+  - name: Categories
+  - name: Users
+    description: User management (Administrator only)
+  - name: Notifications
+  - name: Reports
+    description: Dashboards, reports and CSV/PDF export
+  - name: Audit
+    description: Audit trail (Administrator only)
+  - name: System
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    IntId:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 10 }
+  responses:
+    BadRequest:
+      description: Validation failed
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error:
+              message: Validation failed
+              details:
+                - { field: title, message: Title must be at least 5 characters }
+    Unauthorized:
+      description: Missing, invalid or expired access token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: The signed-in user's role is not allowed to do this
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Not found (or not visible to this user)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Business rule violation (e.g. invalid status transition, duplicate email)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            message: { type: string }
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field: { type: string }
+                  message: { type: string }
+    Role:
+      type: string
+      enum: [STUDENT, STAFF, OFFICER, ADMIN]
+    Status:
+      type: string
+      enum: [PENDING, ASSIGNED, IN_PROGRESS, ON_HOLD, COMPLETED, CLOSED, REJECTED, CANCELLED]
+    Priority:
+      type: string
+      enum: [LOW, MEDIUM, HIGH, URGENT]
+    Pagination:
+      type: object
+      properties:
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+        totalPages: { type: integer }
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        full_name: { type: string }
+        email: { type: string, format: email }
+        phone: { type: string }
+        department: { type: string }
+        id_number: { type: string, description: Matric or staff number }
+        role: { $ref: '#/components/schemas/Role' }
+        role_label: { type: string }
+        is_active: { type: boolean }
+        specialisation: { type: string, nullable: true }
+        availability: { type: string, nullable: true, enum: [AVAILABLE, BUSY, OFF_DUTY] }
+        created_at: { type: string, format: date-time }
+    AuthResponse:
+      type: object
+      properties:
+        message: { type: string }
+        accessToken: { type: string }
+        user: { $ref: '#/components/schemas/User' }
+    Category:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        description: { type: string }
+        icon: { type: string }
+        default_priority: { $ref: '#/components/schemas/Priority' }
+        is_active: { type: boolean }
+        request_count: { type: integer }
+    RequestSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        reference: { type: string, example: SR-2026-00042 }
+        title: { type: string }
+        location: { type: string }
+        room: { type: string }
+        priority: { $ref: '#/components/schemas/Priority' }
+        status: { $ref: '#/components/schemas/Status' }
+        category_id: { type: integer }
+        category_name: { type: string }
+        requester_id: { type: string, format: uuid }
+        requester_name: { type: string }
+        officer_id: { type: string, format: uuid, nullable: true }
+        officer_name: { type: string, nullable: true }
+        rating: { type: integer, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        completed_at: { type: string, format: date-time, nullable: true }
+    RequestDetail:
+      allOf:
+        - $ref: '#/components/schemas/RequestSummary'
+        - type: object
+          properties:
+            description: { type: string }
+            feedback: { type: string, nullable: true }
+            status_logs:
+              type: array
+              items:
+                type: object
+                properties:
+                  from_status: { $ref: '#/components/schemas/Status' }
+                  to_status: { $ref: '#/components/schemas/Status' }
+                  comment: { type: string }
+                  changed_by_name: { type: string }
+                  created_at: { type: string, format: date-time }
+            assignments:
+              type: array
+              items:
+                type: object
+                properties:
+                  officer_name: { type: string }
+                  assigned_by_name: { type: string }
+                  is_active: { type: boolean }
+                  assigned_at: { type: string, format: date-time }
+            attachments:
+              type: array
+              items: { $ref: '#/components/schemas/Attachment' }
+    Attachment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        filename: { type: string }
+        mime_type: { type: string }
+        size_bytes: { type: integer }
+        kind: { type: string, enum: [EVIDENCE, COMPLETION] }
+    Notification:
+      type: object
+      properties:
+        id: { type: integer }
+        type: { type: string }
+        title: { type: string }
+        message: { type: string }
+        request_id: { type: string, format: uuid, nullable: true }
+        request_reference: { type: string, nullable: true }
+        is_read: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      tags: [System]
+      summary: Health check (also verifies the database connection)
+      security: []
+      responses:
+        '200':
+          description: API and database are up
+          content:
+            application/json:
+              example: { status: ok, database: connected, time: '2026-10-21T10:00:00.000Z' }
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a student or staff account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fullName, email, password, role]
+              properties:
+                fullName: { type: string, example: Chioma Okeke }
+                email: { type: string, example: chioma@example.com }
+                password: { type: string, example: Secret123, description: 'Min 8 chars, at least one letter and one number' }
+                role: { type: string, enum: [STUDENT, STAFF] }
+                phone: { type: string }
+                department: { type: string }
+                idNumber: { type: string, description: Matric or staff number }
+      responses:
+        '201':
+          description: Account created; refresh cookie set
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Sign in
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, example: admin@campusfix.app }
+                password: { type: string, example: CampusFix@2026 }
+      responses:
+        '200':
+          description: Signed in; returns access token and sets httpOnly refresh cookie
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { description: Too many attempts (rate limited) }
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Exchange the refresh cookie for a new access token (token rotation)
+      security: []
+      responses:
+        '200':
+          description: New access token; refresh cookie rotated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Sign out (revokes the session and clears the cookie)
+      security: []
+      responses:
+        '200': { description: Signed out }
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Current user profile
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    patch:
+      tags: [Auth]
+      summary: Update own profile
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fullName: { type: string }
+                phone: { type: string }
+                department: { type: string }
+                idNumber: { type: string }
+      responses:
+        '200': { description: Profile updated }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /auth/change-password:
+    post:
+      tags: [Auth]
+      summary: Change password (signs out all other devices)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string }
+                newPassword: { type: string }
+      responses:
+        '200': { description: Password changed }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /dashboard:
+    get:
+      tags: [Reports]
+      summary: Role-specific dashboard statistics and recent requests
+      responses:
+        '200': { description: OK }
+
+  /requests:
+    get:
+      tags: [Requests]
+      summary: List service requests (search, filter, sort, paginate)
+      description: |
+        Results are scoped by role: requesters see their own requests, officers see requests
+        assigned to them, administrators see everything.
+      parameters:
+        - { name: q, in: query, schema: { type: string }, description: 'Searches title, description, reference, location and requester name' }
+        - { name: status, in: query, schema: { type: string }, description: 'One or more statuses, comma-separated (e.g. PENDING,ASSIGNED)' }
+        - { name: categoryId, in: query, schema: { type: integer } }
+        - { name: priority, in: query, schema: { $ref: '#/components/schemas/Priority' } }
+        - { name: officerId, in: query, schema: { type: string, format: uuid } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: sort, in: query, schema: { type: string, enum: [newest, oldest, priority, updated], default: newest } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/RequestSummary' }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+    post:
+      tags: [Requests]
+      summary: Submit a new service request (Student/Staff) with optional evidence images
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [title, description, categoryId, location]
+              properties:
+                title: { type: string, minLength: 5, maxLength: 150 }
+                description: { type: string, minLength: 10, maxLength: 2000 }
+                categoryId: { type: integer }
+                location: { type: string }
+                room: { type: string }
+                priority: { $ref: '#/components/schemas/Priority' }
+                images:
+                  type: array
+                  maxItems: 4
+                  items: { type: string, format: binary }
+                  description: JPG, PNG or WEBP, max 3 MB each
+          application/json:
+            schema:
+              type: object
+              required: [title, description, categoryId, location]
+              properties:
+                title: { type: string, example: Leaking pipe under the bathroom sink }
+                description: { type: string, example: Water has been leaking for two days. }
+                categoryId: { type: integer, example: 2 }
+                location: { type: string, example: Hostel A (Male) }
+                room: { type: string, example: Room 214 }
+                priority: { $ref: '#/components/schemas/Priority' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/RequestSummary' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /requests/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Requests]
+      summary: Request details with status history, assignments and attachments
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/RequestDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Requests]
+      summary: Edit a request (requester while PENDING; administrator any time before closure)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                description: { type: string }
+                categoryId: { type: integer }
+                location: { type: string }
+                room: { type: string }
+                priority: { $ref: '#/components/schemas/Priority' }
+      responses:
+        '200': { description: Updated }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [Requests]
+      summary: Delete a request (requester while PENDING; administrator any time)
+      responses:
+        '200': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /requests/{id}/status:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    patch:
+      tags: [Requests]
+      summary: Change status (workflow rules depend on role)
+      description: |
+        | Actor | Allowed transitions |
+        |---|---|
+        | Requester | PENDING→CANCELLED, COMPLETED→CLOSED (with optional rating), COMPLETED→IN_PROGRESS (reopen) |
+        | Officer | ASSIGNED→IN_PROGRESS, IN_PROGRESS→ON_HOLD/COMPLETED, ON_HOLD→IN_PROGRESS |
+        | Admin | PENDING→REJECTED/CANCELLED and most other transitions |
+
+        A completion photo can be attached by sending `multipart/form-data` with `images`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: '#/components/schemas/Status' }
+                comment: { type: string }
+                rating: { type: integer, minimum: 1, maximum: 5 }
+                feedback: { type: string }
+      responses:
+        '200': { description: Status changed }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /requests/{id}/assign:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Requests]
+      summary: Assign or reassign to a maintenance officer (Administrator)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [officerId]
+              properties:
+                officerId: { type: string, format: uuid }
+                note: { type: string }
+                priority: { $ref: '#/components/schemas/Priority' }
+      responses:
+        '200': { description: Assigned }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /requests/{id}/comments:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Requests]
+      summary: Add a comment / progress note
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [comment]
+              properties:
+                comment: { type: string }
+      responses:
+        '201': { description: Comment added }
+  /requests/{id}/attachments:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Requests]
+      summary: Upload more images to a request
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                images:
+                  type: array
+                  items: { type: string, format: binary }
+      responses:
+        '201': { description: Uploaded }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /attachments/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Requests]
+      summary: Download an image (only if you can see its request)
+      responses:
+        '200':
+          description: Image bytes
+          content:
+            image/*:
+              schema: { type: string, format: binary }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /categories:
+    get:
+      tags: [Categories]
+      summary: List categories (admins may pass all=true to include inactive)
+      parameters:
+        - { name: all, in: query, schema: { type: boolean } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Category' }
+    post:
+      tags: [Categories]
+      summary: Create category (Administrator)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                description: { type: string }
+                icon: { type: string }
+                defaultPriority: { $ref: '#/components/schemas/Priority' }
+      responses:
+        '201': { description: Created }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /categories/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IntId'
+    patch:
+      tags: [Categories]
+      summary: Update category (Administrator)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+                defaultPriority: { $ref: '#/components/schemas/Priority' }
+                isActive: { type: boolean }
+      responses:
+        '200': { description: Updated }
+    delete:
+      tags: [Categories]
+      summary: Delete category (deactivates it if requests use it)
+      responses:
+        '200': { description: Deleted or deactivated }
+
+  /roles:
+    get:
+      tags: [Users]
+      summary: List roles
+      responses:
+        '200': { description: OK }
+  /users:
+    get:
+      tags: [Users]
+      summary: List users
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: role, in: query, schema: { $ref: '#/components/schemas/Role' } }
+        - { name: isActive, in: query, schema: { type: boolean } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200': { description: Paginated users }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Users]
+      summary: Create a user of any role (e.g. a maintenance officer)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fullName, email, password, role]
+              properties:
+                fullName: { type: string }
+                email: { type: string }
+                password: { type: string }
+                role: { $ref: '#/components/schemas/Role' }
+                phone: { type: string }
+                department: { type: string }
+                specialisation: { type: string }
+                categoryIds: { type: array, items: { type: integer } }
+      responses:
+        '201': { description: Created }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /users/officers:
+    get:
+      tags: [Users]
+      summary: Active maintenance officers with workload (for assignment)
+      parameters:
+        - { name: categoryId, in: query, schema: { type: integer }, description: Ranks officers skilled in this category first }
+      responses:
+        '200': { description: OK }
+  /users/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Users]
+      summary: Get user
+      responses:
+        '200': { description: OK }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Users]
+      summary: Update user (role, status, details, password reset, officer skills)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fullName: { type: string }
+                role: { $ref: '#/components/schemas/Role' }
+                isActive: { type: boolean }
+                password: { type: string }
+                specialisation: { type: string }
+                availability: { type: string, enum: [AVAILABLE, BUSY, OFF_DUTY] }
+                categoryIds: { type: array, items: { type: integer } }
+      responses:
+        '200': { description: Updated }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [Users]
+      summary: Deactivate user (soft delete — history is preserved)
+      responses:
+        '200': { description: Deactivated }
+
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: My notifications
+      parameters:
+        - { name: unread, in: query, schema: { type: boolean } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Notification' }
+                  unread: { type: integer }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+  /notifications/unread-count:
+    get:
+      tags: [Notifications]
+      summary: Number of unread notifications
+      responses:
+        '200': { description: OK }
+  /notifications/read-all:
+    patch:
+      tags: [Notifications]
+      summary: Mark all as read
+      responses:
+        '200': { description: OK }
+  /notifications/{id}/read:
+    parameters:
+      - $ref: '#/components/parameters/IntId'
+    patch:
+      tags: [Notifications]
+      summary: Mark one as read
+      responses:
+        '200': { description: OK }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /reports/summary:
+    get:
+      tags: [Reports]
+      summary: Administrative summary (by status, category, priority, month, officer)
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses:
+        '200': { description: OK }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /reports/export:
+    get:
+      tags: [Reports]
+      summary: Export requests to CSV or PDF (accepts the same filters as GET /requests)
+      parameters:
+        - { name: format, in: query, schema: { type: string, enum: [csv, pdf], default: csv } }
+        - { name: status, in: query, schema: { type: string } }
+        - { name: categoryId, in: query, schema: { type: integer } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: File download
+          content:
+            text/csv: {}
+            application/pdf: {}
+
+  /audit-logs:
+    get:
+      tags: [Audit]
+      summary: Audit trail (who did what, when and from where)
+      parameters:
+        - { name: action, in: query, schema: { type: string } }
+        - { name: actorId, in: query, schema: { type: string, format: uuid } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200': { description: Paginated audit entries }
+        '403': { $ref: '#/components/responses/Forbidden' }
