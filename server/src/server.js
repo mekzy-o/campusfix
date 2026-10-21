@@ -15,6 +15,15 @@ async function start() {
       const [, applied] = await db.migrate.latest();
       if (applied.length) console.log(`Applied migrations: ${applied.join(', ')}`);
     }
+    // On a brand-new database, load the demo data so the deployed app can be
+    // explored straight away (controlled by SEED_IF_EMPTY=true).
+    if (process.env.SEED_IF_EMPTY === 'true') {
+      const [{ count }] = await db('users').count('id as count');
+      if (Number(count) === 0) {
+        await db.seed.run();
+        console.log('Database was empty: demo data loaded');
+      }
+    }
     server.listen(config.port, () => {
       console.log(`CampusFix API listening on port ${config.port} (${config.env})`);
     });
