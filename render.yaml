@@ -1,0 +1,24 @@
+# Render Blueprint: one web service serves the API, Socket.IO and the built
+# React app from the same URL. The database is a free Neon PostgreSQL project;
+# paste its connection string into DATABASE_URL when Render asks for it.
+services:
+  - type: web
+    name: campusfix
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 22
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: SEED_IF_EMPTY
+        value: "true"
