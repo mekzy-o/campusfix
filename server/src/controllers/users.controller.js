@@ -45,6 +45,7 @@ async function list(req, res) {
   const paging = getPaging(f);
 
   const base = db('users').join('roles', 'roles.id', 'users.role_id')
+    .leftJoin('officer_profiles as op', 'op.user_id', 'users.id')
     .modify((q) => {
       if (f.q) {
         const term = `%${f.q}%`;
@@ -60,7 +61,8 @@ async function list(req, res) {
   const [{ count }] = await base.clone().count('users.id as count');
   const rows = await base.clone()
     .select('users.id', 'users.full_name', 'users.email', 'users.phone', 'users.department', 'users.id_number',
-      'users.is_active', 'users.last_login_at', 'users.created_at', 'roles.name as role', 'roles.label as role_label')
+      'users.is_active', 'users.last_login_at', 'users.created_at', 'roles.name as role', 'roles.label as role_label',
+      'op.specialisation', 'op.availability')
     .orderBy('users.created_at', 'desc')
     .limit(paging.limit)
     .offset(paging.offset);
