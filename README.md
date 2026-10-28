@@ -64,7 +64,7 @@ Demo accounts (password **`CampusFix@2026`**):
 |---|---|
 | Frontend | React 19, Vite, React Router, TanStack Query, React Hook Form + Zod, Tailwind CSS 4, Recharts, Socket.IO client |
 | Backend | Node.js 22, Express 5, Knex.js, Zod, JSON Web Tokens, bcrypt, Multer, Socket.IO, PDFKit, Swagger UI |
-| Database | PostgreSQL 16 (Neon in production) |
+| Database | PostgreSQL 18 on Neon in production (PostgreSQL 16 used for local development and tests) |
 | Testing | Jest + Supertest (API), Vitest + React Testing Library (components), Playwright (end-to-end) |
 | Hosting | Render (web service) + Neon (database) |
 
