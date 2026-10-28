@@ -11,6 +11,7 @@ export function renderWithProviders(ui, { route = '/test', path = '/test' } = {}
         <Routes>
           <Route path={path} element={ui} />
           <Route path="/login" element={<p>Login screen</p>} />
+          <Route path="/requests/:id" element={<p>Request screen</p>} />
           <Route path="/" element={<p>Home screen</p>} />
         </Routes>
       </MemoryRouter>
