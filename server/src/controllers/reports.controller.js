@@ -161,9 +161,9 @@ function toPdf(rows, res, meta) {
   const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 36 });
   doc.pipe(res);
 
-  doc.fontSize(16).font('Helvetica-Bold').text('CampusFix — Service Request Report');
+  doc.fontSize(16).font('Helvetica-Bold').text('CampusFix: Service Request Report');
   doc.moveDown(0.2).fontSize(9).font('Helvetica').fillColor('#555')
-    .text(`Generated ${fmtDate(new Date())} UTC by ${meta.by}   •   ${rows.length} request(s)${meta.filters ? `   •   Filters: ${meta.filters}` : ''}`);
+    .text(`Generated ${fmtDate(new Date())} UTC by ${meta.by}. ${rows.length} request(s).${meta.filters ? ` Filters: ${meta.filters}.` : ''}`);
   doc.moveDown(0.8).fillColor('#000');
 
   const cols = [
@@ -174,7 +174,7 @@ function toPdf(rows, res, meta) {
   const drawHeader = () => {
     let x = startX;
     const y = doc.y;
-    doc.rect(startX, y - 3, cols.reduce((a, [, w]) => a + w, 0), 16).fill('#0B3D5C');
+    doc.rect(startX, y - 3, cols.reduce((a, [, w]) => a + w, 0), 16).fill('#12395A');
     doc.fillColor('#fff').font('Helvetica-Bold').fontSize(8);
     cols.forEach(([label, w]) => { doc.text(label, x + 3, y, { width: w - 6 }); x += w; });
     doc.fillColor('#000').font('Helvetica');
