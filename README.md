@@ -12,9 +12,9 @@ Built for MIT 8333 – Advanced Web Application Development (MIVA Open Universit
 
 | | |
 |---|---|
-| Application | _https://campusfix.onrender.com_ (see [DEPLOYMENT.md](DEPLOYMENT.md)) |
-| API documentation (Swagger) | `/api/docs` on the same host |
-| Health check | `/api/health` |
+| Application | https://campusfix-5j9g.onrender.com |
+| API documentation (Swagger) | https://campusfix-5j9g.onrender.com/api/docs |
+| Health check | https://campusfix-5j9g.onrender.com/api/health |
 
 Demo accounts (password **`CampusFix@2026`**):
 
